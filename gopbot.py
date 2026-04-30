@@ -6,17 +6,24 @@ import time
 import hashlib
 import hmac
 import base64
+import logging
 
 from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # =========================
-# 🔑 CONFIG (SỬA 3 DÒNG NÀY)
+# 🔑 CONFIG (ENV)
 # =========================
-TOKEN = "8715231099:AAHqwqVIzTtmq1sSifZnOvuIzUzNfIWTtvs"
+TOKEN = os.getenv("8715231099:AAHqwqVIzTtmq1sSifZnOvuIzUzNfIWTtvs")
 ACR_HOST = "identify-ap-southeast-1.acrcloud.com"
-ACR_ACCESS_KEY = "296c929b5dc7ba13d230b5ef1124f920"
-ACR_ACCESS_SECRET = "mabjWhiYNpQWMbzzq43LckcuiOMLVYCIeZLVa9NH"
+ACR_ACCESS_KEY = os.getenv("296c929b5dc7ba13d230b5ef1124f920")
+ACR_ACCESS_SECRET = os.getenv("mabjWhiYNpQWMbzzq43LckcuiOMLVYCIeZLVa9NH")
+
+# =========================
+# LOG
+# =========================
+logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -24,9 +31,9 @@ dp = Dispatcher()
 print(">>> ĐANG CHẠY GOPBOT <<<")
 
 # =========================
-# 🎯 MENU
+# MENU
 # =========================
-@dp.message(lambda msg: msg.text == "/start")
+@dp.message(Command("start"))
 async def start(msg: types.Message):
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -37,7 +44,7 @@ async def start(msg: types.Message):
     await msg.answer("👋 Chọn chức năng:", reply_markup=keyboard)
 
 # =========================
-# 🔘 CLICK BUTTON
+# BUTTON
 # =========================
 @dp.callback_query()
 async def callback_handler(callback: types.CallbackQuery):
@@ -48,7 +55,7 @@ async def callback_handler(callback: types.CallbackQuery):
     await callback.answer()
 
 # =========================
-# 🧹 CLEAN
+# CLEAN
 # =========================
 def clean_url(url):
     return url.split("?")[0]
@@ -57,7 +64,7 @@ def safe_filename(name):
     return re.sub(r'[\\/*?:"<>|]', "", name)
 
 # =========================
-# 📥 API TIKTOK
+# API TIKTOK
 # =========================
 def api_1(url):
     try:
@@ -81,7 +88,7 @@ def api_2(url):
     return None
 
 # =========================
-# 🎧 ACRCloud
+# ACRCloud
 # =========================
 def recognize(file_path):
     http_method = "POST"
@@ -118,12 +125,13 @@ def recognize(file_path):
     return res.json()
 
 # =========================
-# 🤖 HANDLE
+# HANDLE
 # =========================
 @dp.message()
 async def handle(message: types.Message):
+    print("📩 Nhận:", message.text)
 
-    # ===== 1. LINK TIKTOK =====
+    # ===== TIKTOK =====
     if message.text and "tiktok.com" in message.text:
         url = clean_url(message.text)
         msg = await message.answer("⏳ Đang tải...")
@@ -147,14 +155,13 @@ async def handle(message: types.Message):
 
         return
 
-    # ===== 2. FILE NHẠC (FIX CHUẨN AIROGRAM V3) =====
+    # ===== CHECK NHẠC =====
     if message.audio or message.document:
         await message.answer("⏳ Đang xử lý...")
 
         file_path = None
 
         try:
-            # lấy file_id
             if message.audio:
                 file_id = message.audio.file_id
                 original_name = message.audio.file_name or "audio.mp3"
@@ -162,15 +169,10 @@ async def handle(message: types.Message):
                 file_id = message.document.file_id
                 original_name = message.document.file_name or "audio.mp3"
 
-            # lấy file từ Telegram
             file = await bot.get_file(file_id)
-
             file_path = f"{message.message_id}_{original_name}"
-
-            # tải file
             await bot.download_file(file.file_path, file_path)
 
-            # gọi ACR
             result = recognize(file_path)
             print("ACR RESULT:", result)
 
@@ -203,11 +205,15 @@ async def handle(message: types.Message):
         return
 
 # =========================
-# ▶️ RUN
+# RUN
 # =========================
 async def main():
     print("🤖 Bot đang chạy...")
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    except Exception as e:
+        print("CRASH:", e)
+        await asyncio.sleep(5)
 
 if __name__ == "__main__":
     asyncio.run(main())
