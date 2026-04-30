@@ -1,2 +1,4 @@
-aiogram
+python-telegram-bot==20.7
 requests
+yt-dlp
+ffmpeg-python
