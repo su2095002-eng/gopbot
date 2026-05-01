@@ -6,33 +6,25 @@ import time
 import hashlib
 import hmac
 import base64
-import logging
 
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters import Command
 
-# =========================
-# 🔑 CONFIG (ENV)
-# =========================
+# ===== ENV (Render sẽ đọc từ đây) =====
 TOKEN = os.getenv("8715231099:AAHqwqVIzTtmq1sSifZnOvuIzUzNfIWTtvs")
 ACR_HOST = "identify-ap-southeast-1.acrcloud.com"
 ACR_ACCESS_KEY = os.getenv("296c929b5dc7ba13d230b5ef1124f920")
 ACR_ACCESS_SECRET = os.getenv("mabjWhiYNpQWMbzzq43LckcuiOMLVYCIeZLVa9NH")
 
-# =========================
-# LOG
-# =========================
-logging.basicConfig(level=logging.INFO)
-
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-print(">>> ĐANG CHẠY GOPBOT <<<")
+user_mode = {}
 
-# =========================
-# MENU
-# =========================
+print("🤖 BOT STARTED")
+
+# ===== MENU =====
 @dp.message(Command("start"))
 async def start(msg: types.Message):
     keyboard = InlineKeyboardMarkup(
@@ -43,29 +35,29 @@ async def start(msg: types.Message):
     )
     await msg.answer("👋 Chọn chức năng:", reply_markup=keyboard)
 
-# =========================
-# BUTTON
-# =========================
+# ===== CLICK BUTTON =====
 @dp.callback_query()
 async def callback_handler(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+
     if callback.data == "tiktok":
+        user_mode[user_id] = "tiktok"
         await callback.message.answer("📎 Gửi link TikTok")
+
     elif callback.data == "music":
+        user_mode[user_id] = "music"
         await callback.message.answer("📎 Gửi file MP3")
+
     await callback.answer()
 
-# =========================
-# CLEAN
-# =========================
+# ===== UTIL =====
 def clean_url(url):
     return url.split("?")[0]
 
 def safe_filename(name):
     return re.sub(r'[\\/*?:"<>|]', "", name)
 
-# =========================
-# API TIKTOK
-# =========================
+# ===== API TIKTOK =====
 def api_1(url):
     try:
         api = f"https://tdownv4.sl-bjs.workers.dev/?down={url}"
@@ -87,9 +79,7 @@ def api_2(url):
         return None
     return None
 
-# =========================
-# ACRCloud
-# =========================
+# ===== ACRCloud =====
 def recognize(file_path):
     http_method = "POST"
     http_uri = "/v1/identify"
@@ -124,21 +114,22 @@ def recognize(file_path):
 
     return res.json()
 
-# =========================
-# HANDLE
-# =========================
+# ===== HANDLE =====
 @dp.message()
 async def handle(message: types.Message):
-    print("📩 Nhận:", message.text)
+    user_id = message.from_user.id
+    mode = user_mode.get(user_id)
 
-    # ===== TIKTOK =====
-    if message.text and "tiktok.com" in message.text:
+    # ===== MODE TIKTOK =====
+    if mode == "tiktok":
+        if not message.text or "tiktok.com" not in message.text:
+            await message.answer("❌ Gửi link TikTok hợp lệ")
+            return
+
         url = clean_url(message.text)
         msg = await message.answer("⏳ Đang tải...")
 
-        data = api_1(url)
-        if not data or not data.get("audio"):
-            data = api_2(url)
+        data = api_1(url) or api_2(url)
 
         if data and data.get("audio"):
             title = safe_filename(data.get("title") or "TikTok Audio")
@@ -155,8 +146,12 @@ async def handle(message: types.Message):
 
         return
 
-    # ===== CHECK NHẠC =====
-    if message.audio or message.document:
+    # ===== MODE CHECK NHẠC =====
+    elif mode == "music":
+        if not (message.audio or message.document):
+            await message.answer("❌ Gửi file MP3")
+            return
+
         await message.answer("⏳ Đang xử lý...")
 
         file_path = None
@@ -171,10 +166,10 @@ async def handle(message: types.Message):
 
             file = await bot.get_file(file_id)
             file_path = f"{message.message_id}_{original_name}"
+
             await bot.download_file(file.file_path, file_path)
 
             result = recognize(file_path)
-            print("ACR RESULT:", result)
 
             title = "Không xác định"
             artist = ""
@@ -195,7 +190,7 @@ async def handle(message: types.Message):
             )
 
         except Exception as e:
-            print("Lỗi:", e)
+            print("LỖI:", e)
             await message.answer("❌ Lỗi xử lý nhạc")
 
         finally:
@@ -204,16 +199,12 @@ async def handle(message: types.Message):
 
         return
 
-# =========================
-# RUN
-# =========================
+    else:
+        await message.answer("👉 Bấm /start để chọn chức năng")
+
+# ===== MAIN =====
 async def main():
-    print("🤖 Bot đang chạy...")
-    try:
-        await dp.start_polling(bot)
-    except Exception as e:
-        print("CRASH:", e)
-        await asyncio.sleep(5)
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
